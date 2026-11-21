@@ -1,5 +1,8 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
+using RimWorld;
 using UnityEngine;
 using Verse;
 
@@ -8,7 +11,13 @@ namespace DefaultPlantSelector
     public class DefaultPlantMod : Mod
     {
         public static DefaultPlantSettings Settings;
+
         private Vector2 _scrollPosition = Vector2.zero;
+        private string _searchFilter = string.Empty;
+        private List<ThingDef> _cachedGrowerBuildings;
+
+        private readonly Dictionary<string, IPlantToGrowSettable> _virtualSettables = new Dictionary<string, IPlantToGrowSettable>();
+        private const string ZoneVirtualKey = "__ZONE_GROWING__";
 
         public DefaultPlantMod(ModContentPack content) : base(content)
         {
@@ -19,68 +28,143 @@ namespace DefaultPlantSelector
 
         public override string SettingsCategory() => "DPS_SettingsCategory".Translate();
 
+        public override void WriteSettings()
+        {
+            base.WriteSettings();
+            _virtualSettables.Clear();
+            SelectionState.Reset();
+        }
+
+        private List<ThingDef> GetAllGrowerBuildings()
+        {
+            if (_cachedGrowerBuildings == null)
+            {
+                _cachedGrowerBuildings = DefDatabase<ThingDef>.AllDefsListForReading
+                    .Where(d => d.building != null
+                                && !string.IsNullOrEmpty(d.building.sowTag)
+                                && typeof(IPlantToGrowSettable).IsAssignableFrom(d.thingClass))
+                    .OrderBy(d => d.label ?? d.defName)
+                    .ToList();
+            }
+            return _cachedGrowerBuildings;
+        }
+
+        private IPlantToGrowSettable GetOrCreateVirtualSettable(ThingDef buildingDef)
+        {
+            string key = buildingDef != null ? buildingDef.defName : ZoneVirtualKey;
+
+            if (_virtualSettables.TryGetValue(key, out var existing) && existing != null)
+            {
+                ThingDef current = buildingDef != null
+                    ? Settings.GetBuildingPlant(buildingDef)
+                    : Settings.GetZonePlant();
+                existing.SetPlantDefToGrow(current);
+                return existing;
+            }
+
+            IPlantToGrowSettable created = null;
+
+            if (buildingDef != null)
+            {
+                try
+                {
+                    ThingDef stuff = buildingDef.MadeFromStuff ? GenStuff.DefaultStuffFor(buildingDef) : null;
+                    Thing thing = ThingMaker.MakeThing(buildingDef, stuff);
+                    created = thing as IPlantToGrowSettable;
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning($"[DefaultPlantSelector] Failed to create virtual building for {buildingDef.defName}: {ex.Message}");
+                }
+            }
+            else
+            {
+                created = new Zone_Growing();
+            }
+
+            if (created != null)
+            {
+                ThingDef current = buildingDef != null
+                    ? Settings.GetBuildingPlant(buildingDef)
+                    : Settings.GetZonePlant();
+                created.SetPlantDefToGrow(current);
+                _virtualSettables[key] = created;
+            }
+
+            return created;
+        }
+
         public override void DoSettingsWindowContents(Rect inRect)
         {
             var list = new Listing_Standard();
             list.Begin(inRect);
 
-            // Строка настроек для обычных зон посадок
             var zonePlant = Settings.GetZonePlant();
-            Rect zoneRow = list.GetRect(28f);
-            Widgets.Label(zoneRow.LeftPart(0.75f), "DPS_SettingsZonePlant".Translate(zonePlant.LabelCap));
-            if (Widgets.ButtonText(zoneRow.RightPart(0.22f), "DPS_ResetButton".Translate()))
-            {
-                Settings.defaultZonePlantDefName = "Plant_Rice";
-                Settings.Write();
-            }
+            Rect zoneRow = list.GetRect(30f);
+            DrawPlantSelectionRow(
+                zoneRow,
+                buildingDef: null,
+                title: "DPS_SettingsZonePlant".Translate(),
+                currentPlant: zonePlant,
+                isCustom: Settings.defaultZonePlantDefName != "Plant_Rice",
+                onReset: () =>
+                {
+                    Settings.defaultZonePlantDefName = "Plant_Rice";
+                    Settings.Write();
+                });
 
             list.GapLine();
-            list.Label("DPS_SettingsBuildingsHeader".Translate());
+
+            var allBuildings = GetAllGrowerBuildings();
+            Rect headerRect = list.GetRect(26f);
+            Widgets.Label(headerRect.LeftPart(0.55f), "DPS_SettingsBuildingsHeader".Translate(allBuildings.Count));
+            _searchFilter = Widgets.TextField(headerRect.RightPart(0.42f), _searchFilter);
+
             list.Gap(6f);
 
-            var dict = Settings.buildingDefaultPlants;
-            if (dict == null || dict.Count == 0)
-            {
-                GUI.color = Color.gray;
-                list.Label("DPS_SettingsNoBuildings".Translate());
-                GUI.color = Color.white;
-            }
-            else
-            {
-                // Прокручиваемый список настроенных построек
-                float scrollHeight = inRect.height - list.CurHeight - 45f;
-                Rect outRect = list.GetRect(scrollHeight);
-                Rect viewRect = new Rect(0f, 0f, outRect.width - 16f, dict.Count * 30f);
+            var filteredBuildings = string.IsNullOrWhiteSpace(_searchFilter)
+                ? allBuildings
+                : allBuildings.Where(b =>
+                    (b.label != null && b.label.IndexOf(_searchFilter, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                    b.defName.IndexOf(_searchFilter, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
 
-                Widgets.BeginScrollView(outRect, ref _scrollPosition, viewRect);
-                float curY = 0f;
+            float scrollHeight = inRect.height - list.CurHeight - 42f;
+            Rect outRect = list.GetRect(scrollHeight);
+            Rect viewRect = new Rect(0f, 0f, outRect.width - 16f, filteredBuildings.Count * 32f);
 
-                // Копируем ключи в список, чтобы безопасно удалять элементы при нажатии "Сброс"
-                foreach (var buildingDefName in dict.Keys.ToList())
+            Widgets.BeginScrollView(outRect, ref _scrollPosition, viewRect);
+            float curY = 0f;
+
+            foreach (var bDef in filteredBuildings)
+            {
+                bool hasCustom = Settings.buildingDefaultPlants != null &&
+                                 Settings.buildingDefaultPlants.ContainsKey(bDef.defName);
+                ThingDef currentPlant = Settings.GetBuildingPlant(bDef);
+
+                Rect rowRect = new Rect(0f, curY, viewRect.width, 28f);
+                if (Mouse.IsOver(rowRect))
                 {
-                    string plantDefName = dict[buildingDefName];
-                    var buildingDef = DefDatabase<ThingDef>.GetNamedSilentFail(buildingDefName);
-                    var plantDef = DefDatabase<ThingDef>.GetNamedSilentFail(plantDefName);
-
-                    string buildingLabel = buildingDef != null ? buildingDef.LabelCap.ToString() : buildingDefName;
-                    string plantLabel = plantDef != null ? plantDef.LabelCap.ToString() : plantDefName;
-
-                    Rect rowRect = new Rect(0f, curY, viewRect.width, 26f);
-                    Widgets.Label(rowRect.LeftPart(0.75f), $"{buildingLabel}: {plantLabel}");
-
-                    if (Widgets.ButtonText(rowRect.RightPart(0.22f), "DPS_ResetButton".Translate()))
-                    {
-                        dict.Remove(buildingDefName);
-                        Settings.Write();
-                    }
-
-                    curY += 30f;
+                    Widgets.DrawHighlight(rowRect);
                 }
 
-                Widgets.EndScrollView();
+                DrawPlantSelectionRow(
+                    rowRect,
+                    buildingDef: bDef,
+                    title: bDef.LabelCap,
+                    currentPlant: currentPlant,
+                    isCustom: hasCustom,
+                    onReset: () =>
+                    {
+                        Settings.buildingDefaultPlants?.Remove(bDef.defName);
+                        Settings.Write();
+                    });
+
+                curY += 32f;
             }
 
-            list.Gap(8f);
+            Widgets.EndScrollView();
+
+            list.Gap(6f);
             if (list.ButtonText("DPS_ResetAllButton".Translate()))
             {
                 Settings.defaultZonePlantDefName = "Plant_Rice";
@@ -89,6 +173,99 @@ namespace DefaultPlantSelector
             }
 
             list.End();
+        }
+
+        private void DrawPlantSelectionRow(
+            Rect rect,
+            ThingDef buildingDef,
+            string title,
+            ThingDef currentPlant,
+            bool isCustom,
+            Action onReset)
+        {
+            float curX = rect.x;
+
+            if (buildingDef != null)
+            {
+                Widgets.ThingIcon(new Rect(curX, rect.y + 2f, 24f, 24f), buildingDef);
+                if (Mouse.IsOver(new Rect(curX, rect.y, 26f, rect.height)))
+                {
+                    TooltipHandler.TipRegion(
+                        new Rect(curX, rect.y, 26f, rect.height),
+                        $"{buildingDef.LabelCap}\n({buildingDef.defName})\n{buildingDef.modContentPack?.Name}");
+                }
+                curX += 30f;
+            }
+
+            float titleWidth = rect.width * 0.40f - (buildingDef != null ? 30f : 0f);
+            Text.Anchor = TextAnchor.MiddleLeft;
+            Widgets.Label(new Rect(curX, rect.y, titleWidth, rect.height), title);
+            curX += titleWidth + 6f;
+
+            if (currentPlant != null)
+            {
+                Widgets.ThingIcon(new Rect(curX, rect.y + 2f, 24f, 24f), currentPlant);
+                curX += 28f;
+
+                string plantText = isCustom
+                    ? currentPlant.LabelCap.ToString()
+                    : $"{currentPlant.LabelCap} {"DPS_VanillaDefaultTag".Translate()}";
+
+                if (!isCustom) GUI.color = Color.gray;
+                float plantLabelWidth = rect.width * 0.28f;
+                Widgets.Label(new Rect(curX, rect.y, plantLabelWidth, rect.height), plantText);
+                GUI.color = Color.white;
+                curX += plantLabelWidth + 6f;
+            }
+
+            Text.Anchor = TextAnchor.UpperLeft;
+
+            float resetWidth = 75f;
+            float selectWidth = rect.xMax - curX - resetWidth - 6f;
+            if (Widgets.ButtonText(new Rect(curX, rect.y + 1f, selectWidth, rect.height - 2f), "DPS_SelectButton".Translate()))
+            {
+                OpenVirtualBuildingMenu(buildingDef);
+            }
+
+            Rect resetRect = new Rect(rect.xMax - resetWidth, rect.y + 1f, resetWidth, rect.height - 2f);
+            if (isCustom)
+            {
+                if (Widgets.ButtonText(resetRect, "DPS_ResetButton".Translate()))
+                {
+                    onReset();
+                }
+            }
+            else
+            {
+                GUI.color = new Color(1f, 1f, 1f, 0.35f);
+                Widgets.ButtonText(resetRect, "DPS_ResetButton".Translate(), active: false);
+                GUI.color = Color.white;
+            }
+        }
+
+        private void OpenVirtualBuildingMenu(ThingDef buildingDef)
+        {
+            var virtualSettable = GetOrCreateVirtualSettable(buildingDef);
+            if (virtualSettable == null)
+                return;
+
+            SelectionState.Arm(buildingDef);
+
+            var cmd = new Command_SetPlantToGrow
+            {
+                settable = virtualSettable
+            };
+
+            cmd.ProcessInput(Event.current);
+
+            if (SelectionState.IsArmed)
+            {
+                LongEventHandler.ExecuteWhenFinished(() =>
+                {
+                    if (SelectionState.IsArmed)
+                        SelectionState.Reset();
+                });
+            }
         }
     }
 }

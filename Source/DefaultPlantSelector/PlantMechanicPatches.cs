@@ -1,24 +1,35 @@
+using System;
 using HarmonyLib;
 using RimWorld;
 using Verse;
 
 namespace DefaultPlantSelector
 {
-    // 1. Подстановка культуры при создании новой зоны посадок
     [HarmonyPatch(typeof(Zone_Growing), MethodType.Constructor, new[] { typeof(ZoneManager) })]
     public static class Patch_ZoneGrowing_Ctor
     {
-        public static void Postfix(Zone_Growing __instance)
+        public static void Postfix(Zone_Growing __instance, ZoneManager zoneManager)
         {
             var plant = DefaultPlantMod.Settings?.GetZonePlant();
-            if (plant?.plant != null)
+            if (plant?.plant == null)
+                return;
+
+            Map map = zoneManager?.map ?? Find.CurrentMap;
+            if (PlantAvailabilityHelper.IsPlantAvailable(plant, map))
             {
                 __instance.SetPlantDefToGrow(plant);
+            }
+            else
+            {
+                var fallback = DefDatabase<ThingDef>.GetNamedSilentFail("Plant_Rice");
+                if (fallback != null && PlantAvailabilityHelper.IsPlantAvailable(fallback, map))
+                {
+                    __instance.SetPlantDefToGrow(fallback);
+                }
             }
         }
     }
 
-    // 2. Подстановка культуры при постройке конкретной грядки / гидропоники
     [HarmonyPatch(typeof(Building_PlantGrower), nameof(Building_PlantGrower.PostMake))]
     public static class Patch_BuildingPlantGrower_PostMake
     {
@@ -28,14 +39,30 @@ namespace DefaultPlantSelector
                 return;
 
             var plant = DefaultPlantMod.Settings?.GetBuildingPlant(__instance.def);
-            if (plant?.plant?.sowTags != null && plant.plant.sowTags.Contains(__instance.def.building.sowTag))
+            if (plant?.plant?.sowTags == null || !plant.plant.sowTags.Contains(__instance.def.building.sowTag))
+                return;
+
+            if (PlantAvailabilityHelper.IsPlantAvailable(plant, Find.CurrentMap))
             {
                 __instance.SetPlantDefToGrow(plant);
             }
         }
     }
 
-    // 3. Ловля любого открываемого окна сразу после нажатия нашей кнопки
+    [HarmonyPatch(typeof(Command_SetPlantToGrow), "IsPlantAvailable")]
+    public static class Patch_CommandSetPlantToGrow_IsPlantAvailable
+    {
+        public static bool Prefix(ThingDef plantDef, ref bool __result)
+        {
+            if (SelectionState.IsActive && Current.Game == null)
+            {
+                __result = plantDef?.plant != null && plantDef.plant.Sowable;
+                return false;
+            }
+            return true;
+        }
+    }
+
     [HarmonyPatch(typeof(WindowStack), nameof(WindowStack.Add))]
     public static class Patch_WindowStack_Add
     {
@@ -48,7 +75,6 @@ namespace DefaultPlantSelector
         }
     }
 
-    // 4. Сброс состояния строго при закрытии пойманного окна
     [HarmonyPatch(typeof(WindowStack), nameof(WindowStack.TryRemove), new[] { typeof(Window), typeof(bool) })]
     public static class Patch_WindowStack_TryRemove
     {
@@ -61,7 +87,6 @@ namespace DefaultPlantSelector
         }
     }
 
-    // 5. Перехват выбора растения для зоны посадок (пока открыто пойманное окно)
     [HarmonyPatch(typeof(Zone_Growing), nameof(Zone_Growing.SetPlantDefToGrow))]
     public static class Patch_ZoneGrowing_SetPlantDefToGrow
     {
@@ -71,13 +96,39 @@ namespace DefaultPlantSelector
         }
     }
 
-    // 6. Перехват выбора растения для грядки / гидропоники (пока открыто пойманное окно)
     [HarmonyPatch(typeof(Building_PlantGrower), nameof(Building_PlantGrower.SetPlantDefToGrow))]
     public static class Patch_BuildingPlantGrower_SetPlantDefToGrow
     {
         public static bool Prefix(ThingDef plantDef)
         {
             return PlantSelectionHandler.HandleSetPlant(plantDef);
+        }
+    }
+
+    internal static class PlantAvailabilityHelper
+    {
+        private static readonly Func<ThingDef, Map, bool> IsPlantAvailableDelegate =
+            AccessTools.MethodDelegate<Func<ThingDef, Map, bool>>(
+                AccessTools.Method(typeof(Command_SetPlantToGrow), "IsPlantAvailable", new[] { typeof(ThingDef), typeof(Map) }));
+
+        public static bool IsPlantAvailable(ThingDef plantDef, Map map)
+        {
+            if (plantDef?.plant == null || !plantDef.plant.Sowable || Current.Game == null)
+                return false;
+
+            if (IsPlantAvailableDelegate != null)
+                return IsPlantAvailableDelegate(plantDef, map);
+
+            if (plantDef.plant.sowResearchPrerequisites != null)
+            {
+                foreach (var research in plantDef.plant.sowResearchPrerequisites)
+                {
+                    if (!research.IsFinished)
+                        return false;
+                }
+            }
+
+            return true;
         }
     }
 
@@ -110,7 +161,6 @@ namespace DefaultPlantSelector
                 DefaultPlantMod.Settings.Write();
             }
 
-            // Если окно так и не открылось (другой вариант выбора используется), сбрасываем после выбора
             if (SelectionState.IsArmed && SelectionState.TrackedWindow == null)
             {
                 SelectionState.Reset();

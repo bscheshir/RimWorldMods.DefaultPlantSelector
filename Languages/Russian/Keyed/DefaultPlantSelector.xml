@@ -6,9 +6,10 @@
 	<DPS_DefaultPlantChanged>Культура по умолчанию: {0}</DPS_DefaultPlantChanged>
 	<DPS_DefaultBuildingPlantChanged>Культура по умолчанию для «{0}»: {1}</DPS_DefaultBuildingPlantChanged>
 	<DPS_SettingsCategory>Default Plant Selector</DPS_SettingsCategory>
-	<DPS_SettingsZonePlant>Зоны посадок: {0}</DPS_SettingsZonePlant>
-	<DPS_SettingsBuildingsHeader>Постройки и грядки:</DPS_SettingsBuildingsHeader>
-	<DPS_SettingsNoBuildings>Индивидуальные настройки для построек пока не заданы (используются стандартные).</DPS_SettingsNoBuildings>
+	<DPS_SettingsZonePlant>Зоны посадок</DPS_SettingsZonePlant>
+	<DPS_SettingsBuildingsHeader>Все грядки и гидропоника ({0}):</DPS_SettingsBuildingsHeader>
+	<DPS_SelectButton>Выбрать...</DPS_SelectButton>
 	<DPS_ResetButton>Сброс</DPS_ResetButton>
 	<DPS_ResetAllButton>Сбросить всё</DPS_ResetAllButton>
+	<DPS_VanillaDefaultTag>(стандарт)</DPS_VanillaDefaultTag>
 </LanguageData>

@@ -6,9 +6,10 @@
 	<DPS_DefaultPlantChanged>Default crop set to: {0}</DPS_DefaultPlantChanged>
 	<DPS_DefaultBuildingPlantChanged>Default crop for {0} set to: {1}</DPS_DefaultBuildingPlantChanged>
 	<DPS_SettingsCategory>Default Plant Selector</DPS_SettingsCategory>
-	<DPS_SettingsZonePlant>Growing zones: {0}</DPS_SettingsZonePlant>
-	<DPS_SettingsBuildingsHeader>Buildings &amp; Planters:</DPS_SettingsBuildingsHeader>
-	<DPS_SettingsNoBuildings>No custom building defaults configured yet (using vanilla defaults).</DPS_SettingsNoBuildings>
+	<DPS_SettingsZonePlant>Growing zones</DPS_SettingsZonePlant>
+	<DPS_SettingsBuildingsHeader>All Planters &amp; Hydroponics ({0}):</DPS_SettingsBuildingsHeader>
+	<DPS_SelectButton>Select...</DPS_SelectButton>
 	<DPS_ResetButton>Reset</DPS_ResetButton>
 	<DPS_ResetAllButton>Reset All to Defaults</DPS_ResetAllButton>
+	<DPS_VanillaDefaultTag>(default)</DPS_VanillaDefaultTag>
 </LanguageData>
