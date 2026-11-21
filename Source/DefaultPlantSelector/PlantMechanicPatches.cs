@@ -49,20 +49,6 @@ namespace DefaultPlantSelector
         }
     }
 
-    [HarmonyPatch(typeof(Command_SetPlantToGrow), "IsPlantAvailable")]
-    public static class Patch_CommandSetPlantToGrow_IsPlantAvailable
-    {
-        public static bool Prefix(ThingDef plantDef, ref bool __result)
-        {
-            if (SelectionState.IsActive && Current.Game == null)
-            {
-                __result = plantDef?.plant != null && plantDef.plant.Sowable;
-                return false;
-            }
-            return true;
-        }
-    }
-
     [HarmonyPatch(typeof(WindowStack), nameof(WindowStack.Add))]
     public static class Patch_WindowStack_Add
     {

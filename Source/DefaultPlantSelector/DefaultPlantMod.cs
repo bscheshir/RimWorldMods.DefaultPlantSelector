@@ -1,8 +1,9 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using HarmonyLib;
 using RimWorld;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using Verse;
 
@@ -16,9 +17,6 @@ namespace DefaultPlantSelector
         private string _searchFilter = string.Empty;
         private List<ThingDef> _cachedGrowerBuildings;
 
-        private readonly Dictionary<string, IPlantToGrowSettable> _virtualSettables = new Dictionary<string, IPlantToGrowSettable>();
-        private const string ZoneVirtualKey = "__ZONE_GROWING__";
-
         public DefaultPlantMod(ModContentPack content) : base(content)
         {
             Settings = GetSettings<DefaultPlantSettings>();
@@ -31,7 +29,6 @@ namespace DefaultPlantSelector
         public override void WriteSettings()
         {
             base.WriteSettings();
-            _virtualSettables.Clear();
             SelectionState.Reset();
         }
 
@@ -47,51 +44,6 @@ namespace DefaultPlantSelector
                     .ToList();
             }
             return _cachedGrowerBuildings;
-        }
-
-        private IPlantToGrowSettable GetOrCreateVirtualSettable(ThingDef buildingDef)
-        {
-            string key = buildingDef != null ? buildingDef.defName : ZoneVirtualKey;
-
-            if (_virtualSettables.TryGetValue(key, out var existing) && existing != null)
-            {
-                ThingDef current = buildingDef != null
-                    ? Settings.GetBuildingPlant(buildingDef)
-                    : Settings.GetZonePlant();
-                existing.SetPlantDefToGrow(current);
-                return existing;
-            }
-
-            IPlantToGrowSettable created = null;
-
-            if (buildingDef != null)
-            {
-                try
-                {
-                    ThingDef stuff = buildingDef.MadeFromStuff ? GenStuff.DefaultStuffFor(buildingDef) : null;
-                    Thing thing = ThingMaker.MakeThing(buildingDef, stuff);
-                    created = thing as IPlantToGrowSettable;
-                }
-                catch (Exception ex)
-                {
-                    Log.Warning($"[DefaultPlantSelector] Failed to create virtual building for {buildingDef.defName}: {ex.Message}");
-                }
-            }
-            else
-            {
-                created = new Zone_Growing();
-            }
-
-            if (created != null)
-            {
-                ThingDef current = buildingDef != null
-                    ? Settings.GetBuildingPlant(buildingDef)
-                    : Settings.GetZonePlant();
-                created.SetPlantDefToGrow(current);
-                _virtualSettables[key] = created;
-            }
-
-            return created;
         }
 
         public override void DoSettingsWindowContents(Rect inRect)
@@ -224,7 +176,7 @@ namespace DefaultPlantSelector
             float selectWidth = rect.xMax - curX - resetWidth - 6f;
             if (Widgets.ButtonText(new Rect(curX, rect.y + 1f, selectWidth, rect.height - 2f), "DPS_SelectButton".Translate()))
             {
-                OpenVirtualBuildingMenu(buildingDef);
+                OpenPlantMenu(buildingDef);
             }
 
             Rect resetRect = new Rect(rect.xMax - resetWidth, rect.y + 1f, resetWidth, rect.height - 2f);
@@ -243,20 +195,50 @@ namespace DefaultPlantSelector
             }
         }
 
-        private void OpenVirtualBuildingMenu(ThingDef buildingDef)
+        private void OpenPlantMenu(ThingDef buildingDef)
         {
-            var virtualSettable = GetOrCreateVirtualSettable(buildingDef);
-            if (virtualSettable == null)
+            if (Current.Game == null || Find.CurrentMap == null)
+            {
+                OpenFallbackFloatMenu(buildingDef);
                 return;
+            }
+
+            IPlantToGrowSettable settable = CreateInGameVirtualSettable(buildingDef);
+            if (settable == null)
+            {
+                OpenFallbackFloatMenu(buildingDef);
+                return;
+            }
 
             SelectionState.Arm(buildingDef);
 
-            var cmd = new Command_SetPlantToGrow
-            {
-                settable = virtualSettable
-            };
+            // Сохраняем текущее выделение на карте и временно подставляем виртуальный объект,
+            var selector = Find.Selector;
+            var savedSelection = selector.SelectedObjects.ToList();
 
-            cmd.ProcessInput(Event.current);
+            try
+            {
+                selector.SelectedObjects.Clear();
+                selector.SelectedObjects.Add(settable);
+
+                var cmd = new Command_SetPlantToGrow
+                {
+                    settable = settable
+                };
+                cmd.ProcessInput(Event.current);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"[DefaultPlantSelector] Native menu failed, using fallback FloatMenu: {ex}");
+                SelectionState.Reset();
+                OpenFallbackFloatMenu(buildingDef);
+                return;
+            }
+            finally
+            {
+                selector.SelectedObjects.Clear();
+                selector.SelectedObjects.AddRange(savedSelection);
+            }
 
             if (SelectionState.IsArmed)
             {
@@ -266,6 +248,74 @@ namespace DefaultPlantSelector
                         SelectionState.Reset();
                 });
             }
+
         }
+
+        private IPlantToGrowSettable CreateInGameVirtualSettable(ThingDef buildingDef)
+        {
+            if (buildingDef != null)
+            {
+                try
+                {
+                    ThingDef stuff = buildingDef.MadeFromStuff ? GenStuff.DefaultStuffFor(buildingDef) : null;
+                    Thing thing = ThingMaker.MakeThing(buildingDef, stuff);
+                    return thing as IPlantToGrowSettable;
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            return new VirtualZoneSettable();
+        }
+
+        private void OpenFallbackFloatMenu(ThingDef buildingDef)
+        {
+            string requiredTag = buildingDef?.building?.sowTag ?? "Ground";
+
+            var validPlants = DefDatabase<ThingDef>.AllDefsListForReading
+                .Where(p => p.plant != null
+                            && p.plant.Sowable
+                            && p.plant.sowTags != null
+                            && p.plant.sowTags.Contains(requiredTag))
+                .OrderBy(p => p.label ?? p.defName)
+                .ToList();
+
+            var options = new List<FloatMenuOption>();
+            foreach (var plant in validPlants)
+            {
+                var captured = plant;
+                options.Add(new FloatMenuOption(
+                    captured.LabelCap,
+                    () =>
+                    {
+                        if (buildingDef != null)
+                            Settings.SetBuildingPlant(buildingDef.defName, captured.defName);
+                        else
+                            Settings.defaultZonePlantDefName = captured.defName;
+                        Settings.Write();
+                    },
+                    captured.uiIcon,
+                    Color.white
+                ));
+            }
+            if (options.Count == 0)
+            {
+                options.Add(new FloatMenuOption("NoneBrackets".Translate(), null));
+            }
+            Find.WindowStack.Add(new FloatMenu(options));
+        }
+    }
+    internal class VirtualZoneSettable : IPlantToGrowSettable
+    {
+        public IEnumerable<IntVec3> Cells => new IntVec3[0];
+        public Map Map => Find.CurrentMap;
+
+        IEnumerable<IntVec3> IPlantToGrowSettable.Cells => throw new NotImplementedException();
+
+        public ThingDef GetPlantDefToGrow() => DefaultPlantMod.Settings.GetZonePlant();
+        public void SetPlantDefToGrow(ThingDef plantDef) => PlantSelectionHandler.HandleSetPlant(plantDef);
+        public bool CanAcceptSowNow() => true;
     }
 }
