@@ -1,9 +1,8 @@
-using HarmonyLib;
-using RimWorld;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using HarmonyLib;
+using RimWorld;
 using UnityEngine;
 using Verse;
 
@@ -89,9 +88,10 @@ namespace DefaultPlantSelector
 
             foreach (var bDef in filteredBuildings)
             {
+                var capturedDef = bDef;
                 bool hasCustom = Settings.buildingDefaultPlants != null &&
-                                 Settings.buildingDefaultPlants.ContainsKey(bDef.defName);
-                ThingDef currentPlant = Settings.GetBuildingPlant(bDef);
+                                 Settings.buildingDefaultPlants.ContainsKey(capturedDef.defName);
+                ThingDef currentPlant = Settings.GetBuildingPlant(capturedDef);
 
                 Rect rowRect = new Rect(0f, curY, viewRect.width, 28f);
                 if (Mouse.IsOver(rowRect))
@@ -101,13 +101,13 @@ namespace DefaultPlantSelector
 
                 DrawPlantSelectionRow(
                     rowRect,
-                    buildingDef: bDef,
-                    title: bDef.LabelCap,
+                    buildingDef: capturedDef,
+                    title: capturedDef.LabelCap,
                     currentPlant: currentPlant,
                     isCustom: hasCustom,
                     onReset: () =>
                     {
-                        Settings.buildingDefaultPlants?.Remove(bDef.defName);
+                        Settings.buildingDefaultPlants?.Remove(capturedDef.defName);
                         Settings.Write();
                     });
 
@@ -176,7 +176,7 @@ namespace DefaultPlantSelector
             float selectWidth = rect.xMax - curX - resetWidth - 6f;
             if (Widgets.ButtonText(new Rect(curX, rect.y + 1f, selectWidth, rect.height - 2f), "DPS_SelectButton".Translate()))
             {
-                OpenPlantMenu(buildingDef);
+                OpenPlantFloatMenu(buildingDef);
             }
 
             Rect resetRect = new Rect(rect.xMax - resetWidth, rect.y + 1f, resetWidth, rect.height - 2f);
@@ -195,84 +195,9 @@ namespace DefaultPlantSelector
             }
         }
 
-        private void OpenPlantMenu(ThingDef buildingDef)
+        private void OpenPlantFloatMenu(ThingDef buildingDef)
         {
-            if (Current.Game == null || Find.CurrentMap == null)
-            {
-                OpenFallbackFloatMenu(buildingDef);
-                return;
-            }
-
-            IPlantToGrowSettable settable = CreateInGameVirtualSettable(buildingDef);
-            if (settable == null)
-            {
-                OpenFallbackFloatMenu(buildingDef);
-                return;
-            }
-
-            SelectionState.Arm(buildingDef);
-
-            // Сохраняем текущее выделение на карте и временно подставляем виртуальный объект,
-            var selector = Find.Selector;
-            var savedSelection = selector.SelectedObjects.ToList();
-
-            try
-            {
-                selector.SelectedObjects.Clear();
-                selector.SelectedObjects.Add(settable);
-
-                var cmd = new Command_SetPlantToGrow
-                {
-                    settable = settable
-                };
-                cmd.ProcessInput(Event.current);
-            }
-            catch (Exception ex)
-            {
-                Log.Warning($"[DefaultPlantSelector] Native menu failed, using fallback FloatMenu: {ex}");
-                SelectionState.Reset();
-                OpenFallbackFloatMenu(buildingDef);
-                return;
-            }
-            finally
-            {
-                selector.SelectedObjects.Clear();
-                selector.SelectedObjects.AddRange(savedSelection);
-            }
-
-            if (SelectionState.IsArmed)
-            {
-                LongEventHandler.ExecuteWhenFinished(() =>
-                {
-                    if (SelectionState.IsArmed)
-                        SelectionState.Reset();
-                });
-            }
-
-        }
-
-        private IPlantToGrowSettable CreateInGameVirtualSettable(ThingDef buildingDef)
-        {
-            if (buildingDef != null)
-            {
-                try
-                {
-                    ThingDef stuff = buildingDef.MadeFromStuff ? GenStuff.DefaultStuffFor(buildingDef) : null;
-                    Thing thing = ThingMaker.MakeThing(buildingDef, stuff);
-                    return thing as IPlantToGrowSettable;
-                }
-                catch
-                {
-                    return null;
-                }
-            }
-
-            return new VirtualZoneSettable();
-        }
-
-        private void OpenFallbackFloatMenu(ThingDef buildingDef)
-        {
-            string requiredTag = buildingDef?.building?.sowTag ?? "Ground";
+            string requiredTag = buildingDef != null ? buildingDef.building.sowTag : "Ground";
 
             var validPlants = DefDatabase<ThingDef>.AllDefsListForReading
                 .Where(p => p.plant != null
@@ -285,37 +210,27 @@ namespace DefaultPlantSelector
             var options = new List<FloatMenuOption>();
             foreach (var plant in validPlants)
             {
-                var captured = plant;
+                var capturedPlant = plant;
                 options.Add(new FloatMenuOption(
-                    captured.LabelCap,
+                    capturedPlant.LabelCap,
                     () =>
                     {
                         if (buildingDef != null)
-                            Settings.SetBuildingPlant(buildingDef.defName, captured.defName);
+                            Settings.SetBuildingPlant(buildingDef.defName, capturedPlant.defName);
                         else
-                            Settings.defaultZonePlantDefName = captured.defName;
+                            Settings.defaultZonePlantDefName = capturedPlant.defName;
                         Settings.Write();
                     },
-                    captured.uiIcon,
-                    Color.white
-                ));
+                    capturedPlant.uiIcon,
+                    Color.white));
             }
+
             if (options.Count == 0)
             {
                 options.Add(new FloatMenuOption("NoneBrackets".Translate(), null));
             }
+
             Find.WindowStack.Add(new FloatMenu(options));
         }
-    }
-    internal class VirtualZoneSettable : IPlantToGrowSettable
-    {
-        public IEnumerable<IntVec3> Cells => new IntVec3[0];
-        public Map Map => Find.CurrentMap;
-
-        IEnumerable<IntVec3> IPlantToGrowSettable.Cells => throw new NotImplementedException();
-
-        public ThingDef GetPlantDefToGrow() => DefaultPlantMod.Settings.GetZonePlant();
-        public void SetPlantDefToGrow(ThingDef plantDef) => PlantSelectionHandler.HandleSetPlant(plantDef);
-        public bool CanAcceptSowNow() => true;
     }
 }
