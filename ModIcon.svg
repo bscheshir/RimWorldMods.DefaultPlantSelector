@@ -1,0 +1,25 @@
+<svg xmlns="http://w3.org" viewBox="0 0 128 128" width="128" height="128">
+	<defs>
+		<linearGradient id="bladeGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+			<stop offset="0%" stop-color="#2b5419"/>
+			<stop offset="55%" stop-color="#558b2f"/>
+			<stop offset="100%" stop-color="#a3d16c"/>
+		</linearGradient>
+		<linearGradient id="sideBladeGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+			<stop offset="0%" stop-color="#1e3d12"/>
+			<stop offset="60%" stop-color="#437324"/>
+			<stop offset="100%" stop-color="#8bc34a"/>
+		</linearGradient>
+	</defs>
+
+	<g stroke="#1b1e23" stroke-width="4.5" stroke-linejoin="round">
+		<!-- Левая травинка -->
+		<path d="M 48 112 C 56 82, 24 60, 20 30 C 34 56, 62 78, 56 112 Z" fill="url(#sideBladeGrad)"/>
+
+		<!-- Правая травинка -->
+		<path d="M 72 112 C 64 80, 96 58, 106 32 C 92 58, 70 80, 80 112 Z" fill="url(#sideBladeGrad)"/>
+
+		<!-- Центральная высокая травинка -->
+		<path d="M 58 114 C 42 78, 84 48, 70 14 C 76 48, 50 78, 68 114 Z" fill="url(#bladeGrad)"/>
+	</g>
+</svg>
