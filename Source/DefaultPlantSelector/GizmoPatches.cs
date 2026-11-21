@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using HarmonyLib;
 using RimWorld;
 using UnityEngine;
@@ -16,7 +15,7 @@ namespace DefaultPlantSelector
                 yield return g;
 
             var currentDefault = DefaultPlantMod.Settings.GetZonePlant();
-            yield return GizmoHelper.CreateDefaultPlantCommand(__instance, currentDefault, buildingDef: null);
+            yield return new Command_SetDefaultPlant(__instance, currentDefault, buildingDef: null);
         }
     }
 
@@ -32,44 +31,71 @@ namespace DefaultPlantSelector
                 yield break;
 
             var currentDefault = DefaultPlantMod.Settings.GetBuildingPlant(__instance.def);
-            yield return GizmoHelper.CreateDefaultPlantCommand(__instance, currentDefault, buildingDef: __instance.def);
+            yield return new Command_SetDefaultPlant(__instance, currentDefault, buildingDef: __instance.def);
         }
     }
 
-    internal static class GizmoHelper
+    internal class Command_SetDefaultPlant : Command_Action
     {
-        public static Command_Action CreateDefaultPlantCommand(IPlantToGrowSettable settable, ThingDef currentDefault, ThingDef buildingDef)
+        private readonly IPlantToGrowSettable _settable;
+        private readonly ThingDef _buildingDef;
+
+        public Command_SetDefaultPlant(IPlantToGrowSettable settable, ThingDef currentDefault, ThingDef buildingDef)
         {
-            string desc = buildingDef != null
+            _settable = settable;
+            _buildingDef = buildingDef;
+
+            defaultLabel = "DPS_SetDefaultLabel".Translate(currentDefault.LabelCap);
+            defaultDesc = (buildingDef != null
                 ? "DPS_SetDefaultBuildingDesc".Translate(buildingDef.LabelCap)
-                : "DPS_SetDefaultZoneDesc".Translate();
+                : "DPS_SetDefaultZoneDesc".Translate());
+            icon = currentDefault.uiIcon;
+            iconAngle = currentDefault.uiIconAngle;
+            iconOffset = currentDefault.uiIconOffset;
+        }
 
-            return new Command_Action
+        public override GizmoResult GizmoOnGUI(Vector2 topLeft, float maxWidth, GizmoRenderParms parms)
+        {
+            // Перехватываем ПКМ по нашей кнопке до того, как ваниль его проигнорирует
+            Rect rect = new Rect(topLeft.x, topLeft.y, GetWidth(maxWidth), 75f);
+            if (Event.current.type == EventType.MouseDown && Event.current.button == 1 && Mouse.IsOver(rect))
             {
-                defaultLabel = "DPS_SetDefaultLabel".Translate(currentDefault.LabelCap),
-                defaultDesc = desc,
-                icon = currentDefault.uiIcon,
-                iconAngle = currentDefault.uiIconAngle,
-                iconOffset = currentDefault.uiIconOffset,
-                action = () =>
-                {
-                    SelectionState.IsSelectingDefault = true;
-                    SelectionState.TargetBuildingDef = buildingDef;
+                Event.current.Use();
+                OpenPlantMenu(Event.current);
+                return new GizmoResult(GizmoState.Interacted, Event.current);
+            }
 
-                    var cmd = new Command_SetPlantToGrow
-                    {
-                        settable = settable
-                    };
+            return base.GizmoOnGUI(topLeft, maxWidth, parms);
+        }
 
-                    int windowsBefore = Find.WindowStack.Count;
-                    cmd.ProcessInput(Event.current);
+        public override void ProcessInput(Event ev)
+        {
+            // Обычный ЛКМ
+            OpenPlantMenu(ev);
+        }
 
-                    if (Find.WindowStack.Count > windowsBefore)
-                    {
-                        SelectionState.TrackedWindow = Find.WindowStack.Windows.LastOrDefault();
-                    }
-                }
+        private void OpenPlantMenu(Event ev)
+        {
+            // Взводим ожидание окна выбора
+            SelectionState.Arm(_buildingDef);
+
+            // Создаем чистую ванильную команду — все моды (Mint Menus и др.) сами подхватят её вызов
+            var cmd = new Command_SetPlantToGrow
+            {
+                settable = _settable
             };
+            cmd.ProcessInput(ev);
+
+            // Если ни одно окно не открылось (например, режим колеса без Window или пустой список),
+            // сбрасываем ожидание в конце текущего кадра, чтобы флаг не висел вечно
+            if (SelectionState.IsArmed)
+            {
+                LongEventHandler.ExecuteWhenFinished(() =>
+                {
+                    if (SelectionState.IsArmed)
+                        SelectionState.Reset();
+                });
+            }
         }
     }
 }

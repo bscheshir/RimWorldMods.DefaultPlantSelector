@@ -4,7 +4,7 @@ using Verse;
 
 namespace DefaultPlantSelector
 {
-    // Подстановка культуры при создании новой зоны посадок
+    // 1. Подстановка культуры при создании новой зоны посадок
     [HarmonyPatch(typeof(Zone_Growing), MethodType.Constructor, new[] { typeof(ZoneManager) })]
     public static class Patch_ZoneGrowing_Ctor
     {
@@ -18,7 +18,7 @@ namespace DefaultPlantSelector
         }
     }
 
-    // Подстановка культуры при постройке конкретной грядки / гидропоники
+    // 2. Подстановка культуры при постройке конкретной грядки / гидропоники
     [HarmonyPatch(typeof(Building_PlantGrower), nameof(Building_PlantGrower.PostMake))]
     public static class Patch_BuildingPlantGrower_PostMake
     {
@@ -35,13 +35,57 @@ namespace DefaultPlantSelector
         }
     }
 
-    // Перехват выбора растения в меню
-    [HarmonyPatch(typeof(Command_SetPlantToGrow), "SetPlant")]
-    public static class Patch_CommandSetPlantToGrow_SetPlant
+    // 3. Ловля любого открываемого окна сразу после нажатия нашей кнопки
+    [HarmonyPatch(typeof(WindowStack), nameof(WindowStack.Add))]
+    public static class Patch_WindowStack_Add
+    {
+        public static void Postfix(Window window)
+        {
+            if (SelectionState.IsArmed)
+            {
+                SelectionState.BindWindow(window);
+            }
+        }
+    }
+
+    // 4. Сброс состояния строго при закрытии пойманного окна
+    [HarmonyPatch(typeof(WindowStack), nameof(WindowStack.TryRemove), new[] { typeof(Window), typeof(bool) })]
+    public static class Patch_WindowStack_TryRemove
+    {
+        public static void Postfix(Window window)
+        {
+            if (window != null && window == SelectionState.TrackedWindow)
+            {
+                SelectionState.Reset();
+            }
+        }
+    }
+
+    // 5. Перехват выбора растения для зоны посадок (пока открыто пойманное окно)
+    [HarmonyPatch(typeof(Zone_Growing), nameof(Zone_Growing.SetPlantDefToGrow))]
+    public static class Patch_ZoneGrowing_SetPlantDefToGrow
     {
         public static bool Prefix(ThingDef plantDef)
         {
-            if (!SelectionState.IsSelectingDefault)
+            return PlantSelectionHandler.HandleSetPlant(plantDef);
+        }
+    }
+
+    // 6. Перехват выбора растения для грядки / гидропоники (пока открыто пойманное окно)
+    [HarmonyPatch(typeof(Building_PlantGrower), nameof(Building_PlantGrower.SetPlantDefToGrow))]
+    public static class Patch_BuildingPlantGrower_SetPlantDefToGrow
+    {
+        public static bool Prefix(ThingDef plantDef)
+        {
+            return PlantSelectionHandler.HandleSetPlant(plantDef);
+        }
+    }
+
+    internal static class PlantSelectionHandler
+    {
+        public static bool HandleSetPlant(ThingDef plantDef)
+        {
+            if (!SelectionState.IsActive)
                 return true;
 
             if (plantDef != null)
@@ -66,21 +110,13 @@ namespace DefaultPlantSelector
                 DefaultPlantMod.Settings.Write();
             }
 
-            SelectionState.Reset();
-            return false;
-        }
-    }
-
-    // Сброс флага при закрытии меню без выбора
-    [HarmonyPatch(typeof(WindowStack), nameof(WindowStack.TryRemove), new[] { typeof(Window), typeof(bool) })]
-    public static class Patch_WindowStack_TryRemove
-    {
-        public static void Postfix(Window window)
-        {
-            if (SelectionState.IsSelectingDefault && window != null && window == SelectionState.TrackedWindow)
+            // Если окно так и не открылось (другой вариант выбора используется), сбрасываем после выбора
+            if (SelectionState.IsArmed && SelectionState.TrackedWindow == null)
             {
                 SelectionState.Reset();
             }
+
+            return false;
         }
     }
 }
