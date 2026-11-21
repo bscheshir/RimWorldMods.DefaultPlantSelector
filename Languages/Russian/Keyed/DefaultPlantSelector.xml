@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+	<DPS_SetDefaultLabel>По умолчанию: {0}</DPS_SetDefaultLabel>
+	<DPS_SetDefaultZoneDesc>Выбрать культуру, которая будет автоматически назначаться всем новым зонам посадок.</DPS_SetDefaultZoneDesc>
+	<DPS_SetDefaultBuildingDesc>Выбрать культуру, которая будет автоматически назначаться для новых построек типа «{0}».</DPS_SetDefaultBuildingDesc>
+	<DPS_DefaultPlantChanged>Культура по умолчанию: {0}</DPS_DefaultPlantChanged>
+	<DPS_DefaultBuildingPlantChanged>Культура по умолчанию для «{0}»: {1}</DPS_DefaultBuildingPlantChanged>
+	<DPS_SettingsCategory>Default Plant Selector</DPS_SettingsCategory>
+	<DPS_SettingsZonePlant>Зоны посадок: {0}</DPS_SettingsZonePlant>
+	<DPS_SettingsBuildingsHeader>Постройки и грядки:</DPS_SettingsBuildingsHeader>
+	<DPS_SettingsNoBuildings>Индивидуальные настройки для построек пока не заданы (используются стандартные).</DPS_SettingsNoBuildings>
+	<DPS_ResetButton>Сброс</DPS_ResetButton>
+	<DPS_ResetAllButton>Сбросить всё</DPS_ResetAllButton>
+</LanguageData>

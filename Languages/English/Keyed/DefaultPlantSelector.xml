@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+	<DPS_SetDefaultLabel>Default: {0}</DPS_SetDefaultLabel>
+	<DPS_SetDefaultZoneDesc>Select the default plant to be automatically assigned to all newly created growing zones.</DPS_SetDefaultZoneDesc>
+	<DPS_SetDefaultBuildingDesc>Select the default plant to be automatically assigned to newly built {0}.</DPS_SetDefaultBuildingDesc>
+	<DPS_DefaultPlantChanged>Default crop set to: {0}</DPS_DefaultPlantChanged>
+	<DPS_DefaultBuildingPlantChanged>Default crop for {0} set to: {1}</DPS_DefaultBuildingPlantChanged>
+	<DPS_SettingsCategory>Default Plant Selector</DPS_SettingsCategory>
+	<DPS_SettingsZonePlant>Growing zones: {0}</DPS_SettingsZonePlant>
+	<DPS_SettingsBuildingsHeader>Buildings &amp; Planters:</DPS_SettingsBuildingsHeader>
+	<DPS_SettingsNoBuildings>No custom building defaults configured yet (using vanilla defaults).</DPS_SettingsNoBuildings>
+	<DPS_ResetButton>Reset</DPS_ResetButton>
+	<DPS_ResetAllButton>Reset All to Defaults</DPS_ResetAllButton>
+</LanguageData>

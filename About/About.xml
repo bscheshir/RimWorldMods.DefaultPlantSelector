@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+	<name>Default Plant Selector (Культура по умолчанию)</name>
+	<author>BSCheshir</author>
+	<packageId>BSCheshir.DefaultPlantSelector</packageId>
+	<supportedVersions>
+		<li>1.6</li>
+		<li>1.7</li>
+	</supportedVersions>
+	<modDependencies>
+		<li>
+			<packageId>brrainz.harmony</packageId>
+			<displayName>Harmony</displayName>
+			<steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl>
+		</li>
+	</modDependencies>
+	<loadAfter>
+		<li>Ludeon.RimWorld</li>
+		<li>brrainz.harmony</li>
+		<li>dubwise.dubsmintmenus</li>
+	</loadAfter>
+	<description>
+		<![CDATA[
+Allows selecting a default crop for new growing zones, hydroponics basins, and planters.
+- Adds a "Default: ..." gizmo button when selecting a growing zone or planter.
+- Stores separate default crops for open growing zones and buildings/hydroponics.
+- Defaults to Rice instead of vanilla Potatoes out of the box.
+
+Позволяет выбрать культуру по умолчанию для новых зон посадок, гидропонных ферм и грядок.
+- Добавляет кнопку «По умолчанию: ...» на панель управления при выделении поля или грядки.
+- Хранит отдельные культуры по умолчанию для открытых зон посадок и для построек/гидропоники.
+- По умолчанию сразу ставит рис вместо ванильного картофеля.
+
+-----------------------------------------
+Supported Languages:
+- [EN] English
+- [RU] Russian / Русский
+
+-----------------------------------------
+Source Code / Исходный код:
+https://github.com/bscheshir/RimWorldMods.DefaultPlantSelector
+-----------------------------------------
+]]>
+	</description>
+</ModMetaData>
